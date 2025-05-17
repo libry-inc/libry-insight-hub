@@ -5,7 +5,13 @@
     "node": "22.14.0"
   },
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "collect-events": "node collect_events.mjs",
+    "collect-events:asc": "node collect_events.mjs asc",
+    "collect-events:desc": "node collect_events.mjs desc",
+    "events-to-tsv": "node events_to_tsv.mjs",
+    "events-to-tsv:default": "node events_to_tsv.mjs id url received_at exceptions[0].error_class exceptions[0].message exceptions[0].type exceptions[0].stacktrace context unhandled app.releaseStage app.type >storage/events.default.tsv"
+  },
   "dependencies": {
     "axios": "^1.9.0",
     "better-sqlite3": "^11.10.0",

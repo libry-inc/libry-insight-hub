@@ -7,8 +7,7 @@ configDotenv();
 
 const BUGSNAG_PROJECT_ID = process.env.BUGSNAG_PROJECT_ID;
 const BUGSNAG_API_TOKEN = process.env.BUGSNAG_API_TOKEN;
-const MAX_COUNT = process.env.MAX_COUNT;
-const MAX_PER_PAGE = 100;
+const MAX_PER_PAGE = 30; // max 30
 const headers = {
   Authorization: `token ${BUGSNAG_API_TOKEN}`,
   "Content-Type": "application/json",
@@ -20,7 +19,7 @@ const db = new Database("storage/sqlite.db");
 });
 
 async function fetchAndSave(url, table, timestampColumn, callback) {
-  let remaining = MAX_COUNT;
+  let remaining = Infinity;
 
   while (remaining > 0) {
     let response = null;
@@ -45,6 +44,10 @@ async function fetchAndSave(url, table, timestampColumn, callback) {
       }
     } while (response === null);
 
+    if (callback(response.data) === false) {
+      break;
+    }
+
     try {
       const bindings = [];
       for (const record of response.data) {
@@ -68,29 +71,50 @@ async function fetchAndSave(url, table, timestampColumn, callback) {
       console.error("next link is invalid:", response.headers.link);
       break;
     }
-
-    if (callback(response.data) === false) {
-      break;
-    }
   }
 }
 
-async function main() {
+async function main(command) {
+  let query = `?per_page=${MAX_PER_PAGE}&full_reports=true`;
+
+  switch (command) {
+    case "asc":
+    case "desc":
+      query += `&direction=${command}`;
+  }
+
   await fetchAndSave(
-    `https://api.bugsnag.com/projects/${BUGSNAG_PROJECT_ID}/errors?per_page=${MAX_PER_PAGE}`,
-    "errors",
-    "last_seen",
-    () => true,
+    `https://api.bugsnag.com/projects/${BUGSNAG_PROJECT_ID}/events${query}`,
+    "events",
+    "received_at",
+    (data) => {
+      const ids = data.map((record) => record.id);
+      const params = ids.map(() => "?").join(", ");
+      const count = db.prepare(`SELECT COUNT(1) FROM events WHERE id IN(${params})`).pluck().get(...ids);
+
+      if (count === MAX_PER_PAGE) {
+        console.log("取得データが全て保存済みのため終了");
+
+        return false;
+      }
+    },
   );
-  for (const { id } of db.prepare("SELECT id FROM errors ORDER BY id ASC").all()) {
-    await fetchAndSave(
-      `https://api.bugsnag.com/projects/${BUGSNAG_PROJECT_ID}/errors/${id}/events?per_page=${MAX_PER_PAGE}`,
-      "events",
-      "received_at",
-      // TODO: 時間がものすごくかかるようなら、取得済みのデータを取らなくて良いようになにかロジック組む
-      () => true,
-    );
-  }
+  // MEMO: errors を軸にデータを取得しても errors 自体の分類が低品質だと使い物にならない印象
+  // await fetchAndSave(
+  //   `https://api.bugsnag.com/projects/${BUGSNAG_PROJECT_ID}/errors?per_page=${MAX_PER_PAGE}`,
+  //   "errors",
+  //   "last_seen",
+  //   () => true,
+  // );
+  // for (const { id } of db.prepare("SELECT id FROM errors ORDER BY id ASC").all()) {
+  //   await fetchAndSave(
+  //     `https://api.bugsnag.com/projects/${BUGSNAG_PROJECT_ID}/errors/${id}/events?per_page=${MAX_PER_PAGE}&include=${includes.join(",")}`,
+  //     "events",
+  //     "received_at",
+  //     // TODO: 時間がものすごくかかるようなら、取得済みのデータを取らなくて良いようになにかロジック組む
+  //     () => true,
+  //   );
+  // }
 }
 
-main();
+main(process.argv[2]);

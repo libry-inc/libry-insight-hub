@@ -41,7 +41,7 @@ function main(dotNotations) {
 
   outputRow(dotNotations);
 
-  for (const { data } of db.prepare(query).iterate()) {
+  for (const data of db.prepare(query).pluck().iterate()) {
     if (dotNotations[0] === ".") {
       outputRow([JSON.parse(data)]);
     } else {
